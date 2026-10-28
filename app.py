@@ -331,10 +331,20 @@ def technical_chart(data: pd.DataFrame, ticker: str) -> go.Figure:
     figure.add_trace(go.Scatter(x=data.index, y=data["RSI"], name="RSI", line={"color": "#14b8a6"}), row=3, col=1)
     for level in (RSI_OVERSOLD_THRESHOLD, RSI_OVERBOUGHT_THRESHOLD):
         figure.add_hline(y=level, line_dash="dot", line_color="#94a3b8", row=3, col=1)
-    figure.add_trace(go.Bar(x=data.index, y=data["MACD_hist"], name="MACD histogram", marker_color="#94a3b8"), row=4, col=1)
-    figure.add_trace(go.Scatter(x=data.index, y=data["MACD"], name="MACD", line={"color": "#2563eb"}), row=4, col=1)
-    figure.add_trace(go.Scatter(x=data.index, y=data["MACD_signal"], name="Signal", line={"color": "#f97316"}), row=4, col=1)
-    figure.add_trace(go.Scatter(x=data.index, y=data["ATR"], name="ATR", line={"color": "#8b5cf6"}), row=5, col=1)
+    macd_colors = np.where(data["MACD_hist"] >= 0, "#5c9b82", "#b66d76")
+    figure.add_trace(
+        go.Bar(
+            x=data.index,
+            y=data["MACD_hist"],
+            name="MACD histogram",
+            marker_color=macd_colors,
+            opacity=0.78,
+        ),
+        row=4, col=1,
+    )
+    figure.add_trace(go.Scatter(x=data.index, y=data["MACD"], name="MACD", line={"color": "#829fc2", "width": 1.8}), row=4, col=1)
+    figure.add_trace(go.Scatter(x=data.index, y=data["MACD_signal"], name="Signal", line={"color": "#c49a78", "width": 1.6}), row=4, col=1)
+    figure.add_trace(go.Scatter(x=data.index, y=data["ATR"], name="ATR", line={"color": "#9b8caf", "width": 1.8}), row=5, col=1)
     figure.update_layout(
         title=f"{ticker} — adjusted daily prices",
         height=1050,
@@ -702,12 +712,13 @@ def render_technical(ticker: str, prices: pd.DataFrame) -> float | None:
     score = technical_score(data)
     third.metric("Technical score", _score_label(score))
     st.plotly_chart(technical_chart(data, ticker), use_container_width=True)
-    st.markdown(
-        f"**Score rules:** price above SMA{TECHNICAL_TREND_SMA_WINDOW} = +1 (otherwise -1); "
-        f"RSI below {RSI_OVERSOLD_THRESHOLD} = +1, above {RSI_OVERBOUGHT_THRESHOLD} = -1, otherwise 0; "
-        "MACD above its signal line = +1 (otherwise -1). "
-        "The technical score is the mean of the available rule values, bounded from -1 to +1."
-    )
+    with st.expander("How the technical score is calculated"):
+        st.caption(
+            f"Price above SMA{TECHNICAL_TREND_SMA_WINDOW} = +1 (otherwise −1); "
+            f"RSI below {RSI_OVERSOLD_THRESHOLD} = +1, above {RSI_OVERBOUGHT_THRESHOLD} = −1, otherwise 0; "
+            "MACD above its signal line = +1 (otherwise −1). "
+            "The score is the mean of available rules, within −1 to +1."
+        )
     return score
 
 
@@ -724,16 +735,17 @@ def render_fundamental(
         columns[index % 3].metric(key, _format_metric(key, info.get(key)))
     score, _ = fundamental_score(ticker, fundamentals)
     st.metric("Fundamental score", _score_label(score))
-    st.caption(
-        f"Score rules: PER and PBV at or below the available 4-stock average = +1, above = −1; "
-        f"ROE ≥ {FUNDAMENTAL_RULES['roe_strong']:.0%} = +1, "
-        f"{FUNDAMENTAL_RULES['roe_moderate']:.0%}–{FUNDAMENTAL_RULES['roe_strong']:.0%} = 0, "
-        f"below {FUNDAMENTAL_RULES['roe_moderate']:.0%} = −1; "
-        f"DER ≤ {FUNDAMENTAL_RULES['der_low']:.0f} = +1, "
-        f"{FUNDAMENTAL_RULES['der_low']:.0f}–{FUNDAMENTAL_RULES['der_high']:.0f} = 0, "
-        f"above {FUNDAMENTAL_RULES['der_high']:.0f} = −1. "
-        "Missing inputs are excluded from the average."
-    )
+    with st.expander("How the fundamental score is calculated"):
+        st.caption(
+            f"PER and PBV at or below the available 4-stock average = +1, above = −1; "
+            f"ROE ≥ {FUNDAMENTAL_RULES['roe_strong']:.0%} = +1, "
+            f"{FUNDAMENTAL_RULES['roe_moderate']:.0%}–{FUNDAMENTAL_RULES['roe_strong']:.0%} = 0, "
+            f"below {FUNDAMENTAL_RULES['roe_moderate']:.0%} = −1; "
+            f"DER ≤ {FUNDAMENTAL_RULES['der_low']:.0f} = +1, "
+            f"{FUNDAMENTAL_RULES['der_low']:.0f}–{FUNDAMENTAL_RULES['der_high']:.0f} = 0, "
+            f"above {FUNDAMENTAL_RULES['der_high']:.0f} = −1. "
+            "Missing inputs are excluded from the average."
+        )
 
     st.markdown("#### Four-stock comparison")
     comparison: list[dict[str, object]] = []
@@ -997,9 +1009,10 @@ def render_decision_support(
     risk_profile: str,
 ) -> None:
     st.subheader("Decision Support")
-    st.warning(
-        "Educational and research use only, not investment advice. "
-        "Past performance does not guarantee future results."
+    st.markdown(
+        '<div class="research-disclaimer">Educational and research use only, not investment advice. '
+        'Past performance does not guarantee future results.</div>',
+        unsafe_allow_html=True,
     )
     st.caption(
         f"Risk profile: {risk_profile}. Weights are renormalized over available scores "
@@ -1412,6 +1425,12 @@ def main() -> None:
         .decision-value { color: var(--stance-color); font-size: 1.65rem; font-weight: 680; margin-top: 0.25rem; }
         .decision-score { color: #e1e7ef; font-size: 0.88rem; margin-top: 0.12rem; }
         .decision-caveat { color: #98a6ba; font-size: 0.78rem; margin-top: 0.35rem; }
+        .research-disclaimer {
+            color: #778596; font-size: 0.76rem; line-height: 1.5;
+            padding: 0.6rem 0.8rem; margin: 0.3rem 0 0.8rem;
+            background: rgba(14,23,36,0.65); border-left: 2px solid #435063;
+            border-radius: 0 6px 6px 0;
+        }
         .risk-tag {
             display: inline-block; border: 1px solid var(--border); border-radius: 6px;
             color: var(--tag-color); padding: 0.38rem 0.65rem; margin: 0.2rem 0 0.65rem;
@@ -1421,6 +1440,12 @@ def main() -> None:
         [data-testid="stVerticalBlockBorderWrapper"] {
             background: var(--panel) !important; border-color: var(--border) !important; border-radius: 8px;
         }
+        [data-testid="stExpander"] {
+            background: var(--panel) !important; border: 1px solid var(--border);
+            border-radius: 7px; color: var(--muted);
+        }
+        [data-testid="stExpander"] summary { color: #aab6c5; }
+        [data-testid="stExpander"] summary:hover { color: #e1e7ef; }
         [data-testid="stTabs"] [role="tablist"] {
             border-bottom: 1px solid #1b2a3d; gap: 0.35rem;
         }
@@ -1464,7 +1489,7 @@ def main() -> None:
             border-color: var(--border) !important;
         }
         .modebar, .modebar-group { background: transparent !important; }
-        hr { border-color: var(--border); }
+        hr, [data-testid="stSidebar"] hr { border-color: var(--border); }
         @media (max-width: 900px) {
             .overview-heading { align-items: flex-start; flex-direction: column; }
             .latest-note { text-align: left; }
@@ -1499,6 +1524,7 @@ def main() -> None:
                 key="decision_fundamental_weight",
             ),
         }
+        st.divider()
         risk_profile = st.selectbox(
             "Risk profile", RISK_PROFILES, index=1, key="decision_risk_profile"
         )
@@ -1555,9 +1581,10 @@ def main() -> None:
         )
 
     st.divider()
-    st.caption(
-        "For educational and research purposes only, not investment advice. "
-        "Data refreshed daily, not real-time."
+    st.markdown(
+        '<div class="research-disclaimer">For educational and research purposes only, not investment advice. '
+        'Data refreshed daily, not real-time.</div>',
+        unsafe_allow_html=True,
     )
 
 
